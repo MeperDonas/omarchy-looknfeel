@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y jq shellcheck
+
+      - name: ShellCheck
+        run: shellcheck --severity=warning bin/looknfeel
+
+      - name: bash syntax
+        run: bash -n bin/looknfeel
+
+      - name: Manifest is a valid plugin manifest
+        run: |
+          jq -e '.schemaVersion == 1' manifest.json >/dev/null
+          jq -e '.id == "meperdonas.looknfeel"' manifest.json >/dev/null
+          jq -e '.kinds == ["bar-widget"]' manifest.json >/dev/null
+          jq -e '.entryPoints.barWidget' manifest.json >/dev/null
+          entry=$(jq -r '.entryPoints.barWidget' manifest.json)
+          test -f "$entry" || { echo "missing entry point: $entry"; exit 1; }
+          # every schema key must have a default so the widget can read it
+          for key in $(jq -r '.barWidget.schema[].key' manifest.json); do
+            jq -e --arg k "$key" '.barWidget.defaults | has($k)' manifest.json >/dev/null \
+              || { echo "schema key without default: $key"; exit 1; }
+          done
+
+      - name: No symlinks in the plugin folder
+        run: |
+          found=$(find . -type l -not -path './.git/*' | head -5)
+          test -z "$found" || { echo "symlinks found:"; echo "$found"; exit 1; }
+
+      - name: Bundled sound asset is a real wav
+        run: |
+          head -c 4 assets/click.wav | grep -q RIFF

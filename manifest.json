@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "id": "meperdonas.looknfeel",
+  "name": "Look'n'Feel",
+  "version": "1.0.0",
+  "author": "Santiago Villabona (MeperDonas)",
+  "license": "MIT",
+  "description": "Tunea el look'n'feel de Hyprland desde la barra: opacidad de la ventana enfocada y de las de fondo, redondeo de esquinas, gaps internos y externos, grosor del borde, blur, sombras y animaciones. Aplica en vivo al arrastrar (socket IPC de Hyprland), persiste en un bloque gestionado de ~/.config/hypr/looknfeel.lua, con reset por control y reset global, y un click de UI al cambiar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Look'n'Feel",
+    "description": "Opacidad, redondeo, gaps, borde, blur, sombras y animaciones de Hyprland, en vivo y con reset por control.",
+    "category": "Appearance",
+    "aliases": [
+      "look and feel",
+      "looknfeel",
+      "apariencia",
+      "hyprland",
+      "opacidad",
+      "blur",
+      "redondeo",
+      "gaps",
+      "desktop controls"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "icon": "󰘮",
+      "command": "",
+      "sound": true
+    },
+    "schema": [
+      {
+        "key": "sound",
+        "type": "boolean",
+        "label": "Sonido",
+        "defaultValue": true,
+        "description": "Click corto al cambiar un switch, al resetear un control y al soltar un slider. Apagado, ni se carga el efecto."
+      },
+      {
+        "key": "icon",
+        "type": "string",
+        "label": "Icono",
+        "defaultValue": "󰘮",
+        "description": "Glifo Nerd Font del icono en la barra. Por defecto md-tune (U+F062E); pegan con el panel md-window_restore (U+F05B2) y md-palette (U+F03D8)."
+      },
+      {
+        "key": "command",
+        "type": "string",
+        "label": "looknfeel command",
+        "defaultValue": "",
+        "description": "Vacío = el CLI que viaja dentro del plugin. Ponelo sólo para apuntar a otro lado."
+      }
+    ]
+  }
+}

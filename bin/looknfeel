@@ -1,0 +1,260 @@
+#!/bin/bash
+# looknfeel — backend for the Look'n'Feel bar widget.
+#
+# Two jobs:
+#   1. apply Hyprland look'n'feel options to the running session (hyprctl eval,
+#      the only live path Omarchy's Lua config parser accepts)
+#   2. persist the panel's values in a managed block of ~/.config/hypr/looknfeel.lua
+#      so they survive `hyprctl reload` and a reboot.
+#
+# Usage:
+#   looknfeel read                 live values as JSON (one line)
+#   looknfeel live <key> <value>   apply to the running session only
+#   looknfeel set  <key> <value>   apply and persist
+#   looknfeel reset                back to Omarchy defaults, drops the block
+#
+# Keys and what they map to:
+#   focused      decoration:active_opacity     float 0..1
+#   unfocused    decoration:inactive_opacity   float 0..1
+#   rounding     decoration:rounding           int px
+#   gapsIn       general:gaps_in               int px
+#   gapsOut      general:gaps_out              int px
+#   border       general:border_size           int px
+#   blur         decoration:blur:enabled       bool
+#   shadows      decoration:shadow:enabled     bool
+#   animations   animations:enabled            bool
+#
+# LOOKNFEEL_CONFIG overrides the config file (used by the tests).
+
+set -o pipefail
+
+CONFIG="${LOOKNFEEL_CONFIG:-$HOME/.config/hypr/looknfeel.lua}"
+BEGIN_MARKER="-- >>> looknfeel (managed) >>>"
+END_MARKER="-- <<< looknfeel (managed) <<<"
+
+# key|hyprland option|kind|lua key|lua path|omarchy default
+OPTIONS=(
+  "focused|decoration:active_opacity|float|active_opacity|decoration.active_opacity|1.0"
+  "unfocused|decoration:inactive_opacity|float|inactive_opacity|decoration.inactive_opacity|1.0"
+  "rounding|decoration:rounding|int|rounding|decoration.rounding|0"
+  "gapsIn|general:gaps_in|int|gaps_in|general.gaps_in|5"
+  "gapsOut|general:gaps_out|int|gaps_out|general.gaps_out|10"
+  "border|general:border_size|int|border_size|general.border_size|2"
+  "blur|decoration:blur:enabled|bool|blur|decoration.blur.enabled|false"
+  "shadows|decoration:shadow:enabled|bool|shadow|decoration.shadow.enabled|false"
+  "animations|animations:enabled|bool|animations|animations.enabled|true"
+)
+
+declare -A STATE=()
+
+fail() { # <error-code> [detail]
+  local code="$1" detail="${2:-}"
+  jq -cn --arg error "$code" --arg detail "$detail" '{ok: false, error: $error, detail: $detail}'
+  exit 1
+}
+
+spec_for() { # <key> → echoes the option row
+  local row
+  for row in "${OPTIONS[@]}"; do
+    [[ ${row%%|*} == "$1" ]] && { printf '%s' "$row"; return 0; }
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------- live state
+
+live_value() { # <hyprland option> → int | float | true/false | css first number
+  local json value
+  json=$(hyprctl getoption -j "$1" 2>/dev/null) || return 1
+  value=$(printf '%s' "$json" | jq -r '
+    if .int != null then (.int | tostring)
+    elif .float != null then (.float | tostring)
+    elif .bool != null then (if .bool then "true" else "false" end)
+    elif .css != null then (.css | split(" ")[0])
+    else empty end')
+  # jq keeps the input literal (1.000000); normalise so sliders read 1 / 0.62.
+  [[ $value =~ ^[0-9]+\.[0-9]+$ ]] && value=$(printf '%.4g' "$value")
+  printf '%s' "$value"
+}
+
+cmd_read() {
+  local key opt kind lua path def value options="{}"
+  local values="{}"
+  for spec in "${OPTIONS[@]}"; do
+    IFS='|' read -r key opt kind lua path def <<<"$spec"
+    value=$(live_value "$opt") || fail hyprland-unavailable "$opt"
+    [ -n "$value" ] || value="$def"
+    if [[ $kind == bool ]]; then
+      values=$(jq -c --argjson v "$value" --arg k "$key" '. + {($k): $v}' <<<"$values")
+      options=$(jq -c --arg k "$key" --arg h "$opt" --arg l "$path" --argjson d "$def" \
+        '. + {($k): {kind: "bool", hypr: $h, lua: $l, default: $d}}' <<<"$options")
+    else
+      values=$(jq -c --arg v "$value" --arg k "$key" '. + {($k): ($v | tonumber)}' <<<"$values") \
+        || fail bad-live-value "$key=$value"
+      options=$(jq -c --arg k "$key" --arg h "$opt" --arg l "$path" --arg kind "$kind" --argjson d "$def" \
+        '. + {($k): {kind: $kind, hypr: $h, lua: $l, default: ($d | tonumber)}}' <<<"$options")
+    fi
+  done
+  jq -cn \
+    --arg file "$CONFIG" \
+    --argjson managed "$(block_body | grep -q . && printf true || printf false)" \
+    --argjson values "$values" \
+    --argjson options "$options" \
+    '{ok: true, file: $file, managed: $managed, values: $values, options: $options}'
+}
+
+# ------------------------------------------------------------ persisted state
+
+block_body() { # prints only the managed block's lines; nothing when absent
+  [ -f "$CONFIG" ] || return 0
+  awk -v b="$BEGIN_MARKER" -v e="$END_MARKER" '
+    $0 == b { skip = 1; next }
+    $0 == e { skip = 0; next }
+    skip { print }
+  ' "$CONFIG" 2>/dev/null
+}
+
+load_state() { # defaults ← managed block
+  local spec key opt kind lua def body value
+  for spec in "${OPTIONS[@]}"; do
+    IFS='|' read -r key opt kind lua path def <<<"$spec"
+    STATE["$key"]="$def"
+  done
+  body=$(awk -v b="$BEGIN_MARKER" -v e="$END_MARKER" '
+    $0 == b { skip = 1; next }
+    $0 == e { skip = 0; next }
+    skip { print }
+  ' "$CONFIG" 2>/dev/null)
+  [ -n "$body" ] || return 0
+  for spec in "${OPTIONS[@]}"; do
+    IFS='|' read -r key opt kind lua path def <<<"$spec"
+    case "$kind" in
+      int) value=$(sed -nE "s/^[[:space:]]*${lua} = ([0-9]+),?\$/\1/p" <<<"$body" | head -1) ;;
+      float) value=$(sed -nE "s/^[[:space:]]*${lua} = ([0-9]+(\.[0-9]+)?),?\$/\1/p" <<<"$body" | head -1) ;;
+      bool) value=$(sed -nE "s/^[[:space:]]*${lua} = \{ enabled = (true|false) \},?\$/\1/p" <<<"$body" | head -1) ;;
+    esac
+    [ -n "$value" ] && STATE["$key"]="$value"
+  done
+}
+
+write_state() { # STATE → managed block at the end of CONFIG
+  local tmp stripped
+  [ -f "$CONFIG" ] || : > "$CONFIG" || fail config-unwritable "$CONFIG"
+  tmp=$(mktemp) || fail mktemp
+  stripped=$(mktemp) || fail mktemp
+  awk -v b="$BEGIN_MARKER" -v e="$END_MARKER" '
+    $0 == b { skip = 1; next }
+    $0 == e { skip = 0; next }
+    !skip { print }
+  ' "$CONFIG" > "$tmp"
+  # Trim trailing blank lines so repeated writes do not accumulate whitespace.
+  awk '{ lines[NR] = $0 } END {
+         last = NR
+         while (last > 0 && lines[last] ~ /^[[:space:]]*$/) last--
+         for (i = 1; i <= last; i++) print lines[i]
+       }' "$tmp" > "$stripped"
+  {
+    [ -s "$stripped" ] && printf '\n'
+    printf '%s\n' "$BEGIN_MARKER"
+    printf '%s\n' "-- Written by the Look'n'Feel bar widget (meperdonas.looknfeel)."
+    printf '%s\n' "-- Delete this block to fall back to Omarchy's defaults."
+    printf '\n'
+    printf 'hl.config({\n'
+    printf '  general = {\n'
+    printf '    gaps_in = %s,\n' "${STATE[gapsIn]}"
+    printf '    gaps_out = %s,\n' "${STATE[gapsOut]}"
+    printf '    border_size = %s,\n' "${STATE[border]}"
+    printf '  },\n'
+    printf '  decoration = {\n'
+    printf '    rounding = %s,\n' "${STATE[rounding]}"
+    printf '    active_opacity = %s,\n' "${STATE[focused]}"
+    printf '    inactive_opacity = %s,\n' "${STATE[unfocused]}"
+    printf '    blur = { enabled = %s },\n' "${STATE[blur]}"
+    printf '    shadow = { enabled = %s },\n' "${STATE[shadows]}"
+    printf '  },\n'
+    printf '  animations = { enabled = %s },\n' "${STATE[animations]}"
+    printf '})\n'
+    printf '%s\n' "$END_MARKER"
+  } >> "$stripped"
+  mv "$stripped" "$CONFIG" || fail config-write-failed "$CONFIG"
+  rm -f "$tmp"
+}
+
+# ------------------------------------------------------------------- actions
+
+apply_live() { # <lua path> <value>
+  # Hyprland 0.5x with Omarchy's Lua config parser rejects `hyprctl keyword`
+  # ("keyword can't work with non-legacy parsers. Use eval."), so live changes
+  # go through `hyprctl eval` with the same hl.config() call the block writes.
+  local path="$1"
+  local value="$2"
+  # `local a=$1 b=$a` would expand the pre-existing b (bash evaluates the whole
+  # statement first), so keep these on their own lines.
+  local out="$value"
+  local result
+  local IFS='.'
+  local parts=()
+  read -ra parts <<<"$path"
+  local i
+  for (( i = ${#parts[@]} - 1; i >= 0; i-- )); do
+    out="{ ${parts[i]} = $out }"
+  done
+  result=$(hyprctl eval "hl.config($out)" 2>&1) || fail hyprctl-failed "$path $value"
+  [[ $result == *ok* ]] || fail hyprctl-rejected "$path $value: $result"
+}
+
+validate_value() { # <kind> <value>
+  case "$1" in
+    int) [[ $2 =~ ^[0-9]+$ ]] || fail bad-value "$2" ;;
+    float) [[ $2 =~ ^[0-9]+(\.[0-9]+)?$ ]] || fail bad-value "$2" ;;
+    bool) [[ $2 == true || $2 == false ]] || fail bad-value "$2" ;;
+  esac
+}
+
+cmd_set() { # <key> <value> [live-only]
+  local key="$1" value="$2" persist="${3:-persist}" spec kind path def
+  spec=$(spec_for "$key") || fail unknown-key "$key"
+  IFS='|' read -r _ _ kind _ path _ <<<"$spec"
+  validate_value "$kind" "$value"
+  apply_live "$path" "$value"
+  if [[ $persist == persist ]]; then
+    load_state
+    STATE["$key"]="$value"
+    write_state
+  fi
+  jq -cn --arg key "$key" --arg value "$value" --argjson persisted "$([[ $persist == persist ]] && printf true || printf false)" \
+    '{ok: true, key: $key, value: $value, persisted: $persisted}'
+}
+
+cmd_reset() {
+  local spec path def
+  for spec in "${OPTIONS[@]}"; do
+    IFS='|' read -r _ _ _ _ path def <<<"$spec"
+    apply_live "$path" "$def"
+  done
+  if [ -f "$CONFIG" ] && block_body | grep -q .; then
+    local tmp; tmp=$(mktemp) || fail mktemp
+    awk -v b="$BEGIN_MARKER" -v e="$END_MARKER" '
+      $0 == b { skip = 1; next }
+      $0 == e { skip = 0; next }
+      !skip { print }
+    ' "$CONFIG" > "$tmp"
+    local stripped; stripped=$(mktemp) || fail mktemp
+    awk '{ lines[NR] = $0 } END {
+           last = NR
+           while (last > 0 && lines[last] ~ /^[[:space:]]*$/) last--
+           for (i = 1; i <= last; i++) print lines[i]
+         }' "$tmp" > "$stripped"
+    mv "$stripped" "$CONFIG"
+    rm -f "$tmp"
+  fi
+  jq -cn '{ok: true, reset: true}'
+}
+
+case "${1:-read}" in
+  read) cmd_read ;;
+  live) shift; [[ $# -eq 2 ]] || fail usage "live <key> <value>"; cmd_set "$1" "$2" live ;;
+  set) shift; [[ $# -eq 2 ]] || fail usage "set <key> <value>"; cmd_set "$1" "$2" persist ;;
+  reset) shift; cmd_reset ;;
+  *) fail usage "read | live <key> <value> | set <key> <value> | reset" ;;
+esac
