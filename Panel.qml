@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Ui
+import "i18n.js" as I18n
 
 // Look'n'Feel — afiná el look'n'feel de Hyprland desde la barra.
 //
@@ -36,6 +37,11 @@ Panel {
   // `sound` (y con eso ni se carga el efecto).
   readonly property bool soundEnabled: setting("sound", true)
 
+  // Idioma del widget (en | es). Vive en ~/.config/looknfeel/lang y se cambia
+  // con el botoncito de la cabecera o con `looknfeel lang es`. El default es
+  // inglés: es el idioma en que se publica el plugin.
+  property string lang: "en"
+
   readonly property color rowForeground: bar ? bar.foreground : "white"
   readonly property string rowFont: bar ? bar.fontFamily : "monospace"
 
@@ -58,28 +64,29 @@ Panel {
   property var dirtyPreview: null
 
   // ------------------------------------------------------------- los modelos
-  // `heading` abre una sección (separador + título) antes de esa fila.
+  // `headingKey` abre una sección (separador + título) antes de esa fila. Los
+  // textos son claves de i18n.js y se traducen donde se muestran (`root.t`).
   readonly property var sliderRows: [
-    { heading: "OPACIDAD", key: "focused", label: "Ventana enfocada", min: 10, max: 100, unit: "%", scale: 100 },
-    { key: "unfocused", label: "Ventanas de fondo", min: 10, max: 100, unit: "%", scale: 100 },
-    { heading: "ESPACIADO Y BORDES", key: "rounding", label: "Redondeo de esquinas", min: 0, max: 40, unit: "px" },
-    { key: "gapsIn", label: "Gaps internos", min: 0, max: 60, unit: "px" },
-    { key: "gapsOut", label: "Gaps externos", min: 0, max: 60, unit: "px" },
-    { key: "border", label: "Grosor del borde", min: 0, max: 10, unit: "px" }
+    { headingKey: "headingOpacity", key: "focused", labelKey: "focused", min: 10, max: 100, unit: "%", scale: 100 },
+    { key: "unfocused", labelKey: "unfocused", min: 10, max: 100, unit: "%", scale: 100 },
+    { headingKey: "headingSpacing", key: "rounding", labelKey: "rounding", min: 0, max: 40, unit: "px" },
+    { key: "gapsIn", labelKey: "gapsIn", min: 0, max: 60, unit: "px" },
+    { key: "gapsOut", labelKey: "gapsOut", min: 0, max: 60, unit: "px" },
+    { key: "border", labelKey: "border", min: 0, max: 10, unit: "px" }
   ]
 
   readonly property var effectRows: [
     {
-      heading: "EFECTOS", key: "blur", label: "Background blur",
-      hint: "Difumina lo que se ve detrás de las superficies translúcidas."
+      headingKey: "headingEffects", key: "blur", labelKey: "blur",
+      hintKey: "blurHint"
     },
     {
-      key: "shadows", label: "Sombras de ventana",
-      hint: "Sombra alrededor de cada ventana, para despegarla del fondo."
+      key: "shadows", labelKey: "shadows",
+      hintKey: "shadowsHint"
     },
     {
-      key: "animations", label: "Animaciones",
-      hint: "Transiciones de ventanas, workspaces y capas (barra, popups)."
+      key: "animations", labelKey: "animations",
+      hintKey: "animationsHint"
     }
   ]
 
@@ -94,6 +101,11 @@ Panel {
   implicitHeight: bar ? bar.barSize : 26
 
   // ------------------------------------------------------------- utilidades
+  // Traducción: t("blur") o t("backTo", { value: "12 px" }).
+  function t(key, subs) {
+    return I18n.t(root.lang, key, subs)
+  }
+
   function shq(value) {
     return "'" + String(value).replace(/'/g, "'\\''") + "'"
   }
@@ -128,17 +140,19 @@ Panel {
   }
   function defaultLabel(key, unit) {
     var fallback = defaultValue(key)
-    if (fallback === undefined) return "Volver al valor de Omarchy"
-    if (fallback === true) return "Volver a activado"
-    if (fallback === false) return "Volver a desactivado"
+    if (fallback === undefined) return t("resetOmarchy")
+    if (fallback === true) return t("resetOn")
+    if (fallback === false) return t("resetOff")
     var shown = Math.round(Number(fallback) * (unit === "%" ? 100 : 1))
-    return "Volver a " + shown + (unit === "%" ? " %" : " " + unit)
+    return t("backTo", { value: shown + (unit === "%" ? " %" : " " + unit) })
   }
   function tooltipText() {
     if (!loaded) return "Look'n'Feel"
-    return "Look'n'Feel · redondeo " + Math.round(numberValue("rounding")) + "px · gaps "
-      + Math.round(numberValue("gapsIn")) + "/" + Math.round(numberValue("gapsOut"))
-      + (values.blur ? " · blur" : "")
+    return t("tooltipBase", {
+      rounding: Math.round(numberValue("rounding")),
+      gapsIn: Math.round(numberValue("gapsIn")),
+      gapsOut: Math.round(numberValue("gapsOut"))
+    }) + (values.blur ? t("tooltipBlur") : "")
   }
 
   // ------------------------------------------------ aplicar (vivo / persistir)
@@ -216,7 +230,18 @@ Panel {
     commit(key, values[key] !== true)
   }
 
-  Component.onCompleted: refresh()
+  // El botoncito de la cabecera: pasa por el CLI, que es el que escribe
+  // ~/.config/looknfeel/lang (una sola fuente de verdad para panel y terminal).
+  function toggleLang() {
+    var next = lang === "en" ? "es" : "en"
+    call("lang " + next)
+    lang = next
+  }
+
+  Component.onCompleted: {
+    langProbe.running = true
+    refresh()
+  }
   onOpenedChanged: {
     if (opened) {
       refresh()
@@ -235,6 +260,18 @@ Panel {
     onStatusChanged: if (status === Loader.Error) console.log("looknfeel: sin sonido, QtMultimedia no está disponible")
   }
 
+  // Idioma guardado: se lee una vez al arrancar (el panel no adivina el idioma
+  // del sistema: el archivo manda).
+  Process {
+    id: langProbe
+    command: ["/bin/bash", "-lc", root.cli + " lang"]
+    stdout: StdioCollector { id: langOutput }
+    onExited: {
+      var value = String(langOutput.text || "").trim()
+      root.lang = value === "es" ? "es" : "en"
+    }
+  }
+
   Process {
     id: readProc
     command: ["/bin/bash", "-lc", root.cli + " read"]
@@ -243,7 +280,7 @@ Panel {
       var data = null
       try { data = JSON.parse(String(readOutput.text || "")) } catch (error) { data = null }
       if (!data || data.ok !== true) {
-        root.failure = data && data.error ? data.error : "no leí Hyprland (exit " + exitCode + ")"
+        root.failure = data && data.error ? data.error : root.t("readFailed", { code: exitCode })
         return
       }
       root.failure = ""
@@ -363,11 +400,11 @@ Panel {
       anchors.horizontalCenter: parent.horizontalCenter
       spacing: 12
 
-      // Cabecera: icono + nombre + reset global. Los resets por ítem viven en
-      // cada fila.
+      // Cabecera: icono + nombre + idioma + reset global. Los resets por ítem
+      // viven en cada fila.
       Item {
         width: parent.width
-        implicitHeight: Math.max(headerTitle.implicitHeight, headerReset.implicitHeight)
+        implicitHeight: Math.max(headerTitle.implicitHeight, headerReset.implicitHeight, headerLang.implicitHeight)
 
         Text {
           id: headerGlyph
@@ -397,12 +434,26 @@ Panel {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           iconText: root.resetGlyph
-          tooltipText: "Volver a los valores de Omarchy (borra el bloque en looknfeel.lua)"
+          tooltipText: root.t("resetAllHint")
           foreground: root.rowForeground
           fontFamily: root.rowFont
           enabled: root.loaded && root.commandsDirty
           opacity: enabled ? 1 : 0.3
           onClicked: root.resetAll()
+        }
+
+        // Botón de idioma (no dropdown): muestra el idioma activo y alterna.
+        PanelActionButton {
+          id: headerLang
+          anchors.right: headerReset.left
+          anchors.rightMargin: 8
+          anchors.verticalCenter: parent.verticalCenter
+          iconText: root.lang.toUpperCase()
+          tooltipText: root.t("language")
+          foreground: root.rowForeground
+          fontFamily: root.rowFont
+          fontSize: 12
+          onClicked: root.toggleLang()
         }
       }
 
@@ -418,14 +469,14 @@ Panel {
           spacing: 4
 
           PanelSeparator {
-            visible: !!sliderRow.modelData.heading
+            visible: !!sliderRow.modelData.headingKey
             foreground: root.rowForeground
             width: parent.width
           }
 
           PanelSectionHeader {
-            visible: !!sliderRow.modelData.heading
-            text: sliderRow.modelData.heading || ""
+            visible: !!sliderRow.modelData.headingKey
+            text: sliderRow.modelData.headingKey ? root.t(sliderRow.modelData.headingKey) : ""
             foreground: root.rowForeground
             fontFamily: root.rowFont
           }
@@ -437,7 +488,7 @@ Panel {
             Text {
               id: rowLabel
               textFormat: Text.PlainText
-              text: sliderRow.modelData.label
+              text: root.t(sliderRow.modelData.labelKey)
               color: root.rowForeground
               font.family: root.rowFont
               font.pixelSize: 13
@@ -507,14 +558,14 @@ Panel {
           spacing: 6
 
           PanelSeparator {
-            visible: !!effectRow.modelData.heading
+            visible: !!effectRow.modelData.headingKey
             foreground: root.rowForeground
             width: parent.width
           }
 
           PanelSectionHeader {
-            visible: !!effectRow.modelData.heading
-            text: effectRow.modelData.heading || ""
+            visible: !!effectRow.modelData.headingKey
+            text: effectRow.modelData.headingKey ? root.t(effectRow.modelData.headingKey) : ""
             foreground: root.rowForeground
             fontFamily: root.rowFont
           }
@@ -528,8 +579,8 @@ Panel {
               width: parent.width - effectReset.width - 8
               anchors.left: parent.left
               anchors.top: parent.top
-              label: effectRow.modelData.label
-              description: effectRow.modelData.hint
+              label: root.t(effectRow.modelData.labelKey)
+              description: root.t(effectRow.modelData.hintKey)
               checked: root.values[effectRow.modelData.key] === true
               foreground: root.rowForeground
               fontFamily: root.rowFont
@@ -557,7 +608,7 @@ Panel {
         textFormat: Text.PlainText
         visible: root.failure !== ""
         width: parent.width
-        text: root.failure === "" ? "" : "Sin cambios: " + root.failure
+        text: root.failure === "" ? "" : root.t("failurePrefix") + root.failure
         color: root.bar ? root.bar.urgent : "#E05561"
         font.family: root.rowFont
         font.pixelSize: 11

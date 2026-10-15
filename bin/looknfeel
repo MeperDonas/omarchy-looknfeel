@@ -12,6 +12,11 @@
 #   looknfeel live <key> <value>   apply to the running session only
 #   looknfeel set  <key> <value>   apply and persist
 #   looknfeel reset                back to Omarchy defaults, drops the block
+#   looknfeel lang [en|es]         widget language (no argument: prints it)
+#
+# The widget language is one line (`en` | `es`, default `en`) in
+# ~/.config/looknfeel/lang; the panel's header button writes it through `lang`.
+# The messages a person reads from this CLI come out in that language too.
 #
 # Keys and what they map to:
 #   focused      decoration:active_opacity     float 0..1
@@ -29,6 +34,7 @@
 set -o pipefail
 
 CONFIG="${LOOKNFEEL_CONFIG:-$HOME/.config/hypr/looknfeel.lua}"
+LANG_FILE="$HOME/.config/looknfeel/lang"
 BEGIN_MARKER="-- >>> looknfeel (managed) >>>"
 END_MARKER="-- <<< looknfeel (managed) <<<"
 
@@ -51,6 +57,45 @@ fail() { # <error-code> [detail]
   local code="$1" detail="${2:-}"
   jq -cn --arg error "$code" --arg detail "$detail" '{ok: false, error: $error, detail: $detail}'
   exit 1
+}
+
+# --------------------------------------------------------------- idioma del CLI
+
+lang_current() { # → en | es; without the file, English (the published language)
+  local value=""
+  [ -r "$LANG_FILE" ] && value=$(tr -d '[:space:]' < "$LANG_FILE")
+  case "$value" in
+    es) printf 'es' ;;
+    *) printf 'en' ;;
+  esac
+}
+
+# Lo que lee una persona, en el idioma activo: say "english" "español".
+say() {
+  if [[ $(lang_current) == es ]]; then
+    printf '%s' "$2"
+  else
+    printf '%s' "$1"
+  fi
+}
+
+# looknfeel lang [en|es] — mismo archivo de una línea que lee el panel al
+# arrancar (~/.config/looknfeel/lang); el botón de la cabecera entra por acá.
+lang_cmd() {
+  local want="${1:-}"
+  case "$want" in
+    "")
+      lang_current
+      printf '\n'
+      ;;
+    en | es)
+      mkdir -p "${LANG_FILE%/*}" || fail config-unwritable "$LANG_FILE"
+      printf '%s\n' "$want" > "$LANG_FILE" || fail config-unwritable "$LANG_FILE"
+      say "Widget language: $want" "Idioma del widget: $want"
+      printf '\n'
+      ;;
+    *) fail usage "$(say "lang: use 'en' or 'es'" "lang: usá 'en' o 'es'")" ;;
+  esac
 }
 
 spec_for() { # <key> → echoes the option row
@@ -256,5 +301,7 @@ case "${1:-read}" in
   live) shift; [[ $# -eq 2 ]] || fail usage "live <key> <value>"; cmd_set "$1" "$2" live ;;
   set) shift; [[ $# -eq 2 ]] || fail usage "set <key> <value>"; cmd_set "$1" "$2" persist ;;
   reset) shift; cmd_reset ;;
-  *) fail usage "read | live <key> <value> | set <key> <value> | reset" ;;
+  lang) shift; lang_cmd "${1:-}" ;;
+  *) fail usage "$(say "unknown command: $1 (read | live <key> <value> | set <key> <value> | reset | lang [en|es])" \
+       "comando desconocido: $1 (read | live <key> <value> | set <key> <value> | reset | lang [en|es])")" ;;
 esac

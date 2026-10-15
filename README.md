@@ -31,15 +31,15 @@ uses `hl.config()` through Hyprland's IPC socket. Sound is optional and needs
 
 | Control | Hyprland option | Range | Omarchy default |
 |---|---|---|---|
-| Ventana enfocada | `decoration:active_opacity` | 10–100 % | 100 % |
-| Ventanas de fondo | `decoration:inactive_opacity` | 10–100 % | 100 % |
-| Redondeo de esquinas | `decoration:rounding` | 0–40 px | 0 px |
-| Gaps internos | `general:gaps_in` | 0–60 px | 5 px |
-| Gaps externos | `general:gaps_out` | 0–60 px | 10 px |
-| Grosor del borde | `general:border_size` | 0–10 px | 2 px |
+| Focused window | `decoration:active_opacity` | 10–100 % | 100 % |
+| Background windows | `decoration:inactive_opacity` | 10–100 % | 100 % |
+| Corner rounding | `decoration:rounding` | 0–40 px | 0 px |
+| Inner gaps | `general:gaps_in` | 0–60 px | 5 px |
+| Outer gaps | `general:gaps_out` | 0–60 px | 10 px |
+| Border width | `general:border_size` | 0–10 px | 2 px |
 | Background blur | `decoration:blur:enabled` | on/off | off |
-| Sombras de ventana | `decoration:shadow:enabled` | on/off | off |
-| Animaciones | `animations:enabled` | on/off | on |
+| Window shadows | `decoration:shadow:enabled` | on/off | off |
+| Animations | `animations:enabled` | on/off | on |
 
 - **Every row has its own reset** (the ⟲ on the right), lit only while that value
   differs from Omarchy's default. The header's ⟲ resets all nine values and drops
@@ -47,6 +47,9 @@ uses `hl.config()` through Hyprland's IPC socket. Sound is optional and needs
 - Dragging previews on the running session; releasing persists.
 - If you close the panel in the middle of a drag, the last previewed value is
   persisted anyway — the session and the config file never drift apart.
+- **English or Spanish**: the `EN`/`ES` button in the panel header switches the
+  whole panel (no restart), and `looknfeel lang es` does the same from a
+  terminal. English is the default.
 
 ## How it works
 
@@ -71,6 +74,11 @@ uses `hl.config()` through Hyprland's IPC socket. Sound is optional and needs
   `Loader` (`QtMultimedia`), so a shell without that module loses the sound, not
   the panel. Turn it off in the widget settings or with
   `omarchy bar set meperdonas.looknfeel sound false`.
+- **Language**: every user-visible string lives in `i18n.js` (`en` and `es`), and
+  the panel reads the active one from `~/.config/looknfeel/lang` (one line, `en`
+  or `es`, English when the file does not exist). The header button and
+  `looknfeel lang` write that same file; the manifest and the README are always
+  English, since that is what the catalog publishes.
 
 ## CLI
 
@@ -81,6 +89,7 @@ looknfeel read                 live values + metadata, as JSON
 looknfeel live <key> <value>   apply to the running session, no persist
 looknfeel set  <key> <value>   apply and persist
 looknfeel reset                Omarchy defaults, drops the managed block
+looknfeel lang [en|es]         widget language (no argument: prints it)
 ```
 
 Keys: `focused` `unfocused` `rounding` `gapsIn` `gapsOut` `border` `blur`
@@ -89,8 +98,8 @@ by the tests).
 
 ## Settings
 
-- **Sonido** — UI click on/off.
-- **Icono** — any Nerd Font glyph for the bar icon (default md-tune
+- **Sound** — UI click on/off.
+- **Icon** — any Nerd Font glyph for the bar icon (default md-tune
   `U+F062E`; md-window_restore `U+F05B2` and md-palette `U+F03D8` also fit):
 
   ```

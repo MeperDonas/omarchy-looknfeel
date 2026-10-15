@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "meperdonas.looknfeel",
   "name": "Look'n'Feel",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Santiago Villabona (MeperDonas)",
   "license": "MIT",
-  "description": "Tunea el look'n'feel de Hyprland desde la barra: opacidad de la ventana enfocada y de las de fondo, redondeo de esquinas, gaps internos y externos, grosor del borde, blur, sombras y animaciones. Aplica en vivo al arrastrar (socket IPC de Hyprland), persiste en un bloque gestionado de ~/.config/hypr/looknfeel.lua, con reset por control y reset global, y un click de UI al cambiar.",
+  "description": "Tune Hyprland's look'n'feel from the bar: opacity of the focused window and the ones behind, corner rounding, inner and outer gaps, border width, blur, shadows and animations. It applies live while you drag (Hyprland's IPC socket), persists into a managed block of ~/.config/hypr/looknfeel.lua, with a reset per control and a global reset, a UI click on every change, and a panel in English or Spanish.",
   "kinds": [
     "bar-widget"
   ],
@@ -15,7 +15,7 @@
   },
   "barWidget": {
     "displayName": "Look'n'Feel",
-    "description": "Opacidad, redondeo, gaps, borde, blur, sombras y animaciones de Hyprland, en vivo y con reset por control.",
+    "description": "Hyprland's opacity, rounding, gaps, border, blur, shadows and animations, applied live and with a reset per control.",
     "category": "Appearance",
     "aliases": [
       "look and feel",
@@ -39,23 +39,23 @@
       {
         "key": "sound",
         "type": "boolean",
-        "label": "Sonido",
+        "label": "Sound",
         "defaultValue": true,
-        "description": "Click corto al cambiar un switch, al resetear un control y al soltar un slider. Apagado, ni se carga el efecto."
+        "description": "Short click when a switch changes, when a control is reset and when a slider is released. Off, the effect is not even loaded."
       },
       {
         "key": "icon",
         "type": "string",
-        "label": "Icono",
+        "label": "Icon",
         "defaultValue": "󰘮",
-        "description": "Glifo Nerd Font del icono en la barra. Por defecto md-tune (U+F062E); pegan con el panel md-window_restore (U+F05B2) y md-palette (U+F03D8)."
+        "description": "Nerd Font glyph for the bar icon. Defaults to md-tune (U+F062E); md-window_restore (U+F05B2) and md-palette (U+F03D8) also fit."
       },
       {
         "key": "command",
         "type": "string",
         "label": "looknfeel command",
         "defaultValue": "",
-        "description": "Vacío = el CLI que viaja dentro del plugin. Ponelo sólo para apuntar a otro lado."
+        "description": "Empty = the CLI that ships inside the plugin. Set it only to point somewhere else."
       }
     ]
   }

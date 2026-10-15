@@ -39,3 +39,6 @@ jobs:
       - name: Bundled sound asset is a real wav
         run: |
           head -c 4 assets/click.wav | grep -q RIFF
+
+      - name: Translations (en/es)
+        run: ./test/i18n_test.sh
