@@ -1,6 +1,6 @@
 # Look'n'Feel — tune Hyprland's look'n'feel from the Omarchy bar
 
-[![CI](https://github.com/MeperDonas/omarchy-looknfeel/actions/workflows/ci.yml/badge.svg)](https://github.com/MeperDonas/omarchy-looknfeel/actions/workflows/ci.yml)
+[![CI](https://github.com/meperdev/omarchy-looknfeel/actions/workflows/ci.yml/badge.svg)](https://github.com/meperdev/omarchy-looknfeel/actions/workflows/ci.yml)
 
 One bar icon that opens a panel with Hyprland's window appearance: opacity for the
 focused window and the ones behind, corner rounding, inner/outer gaps, border
@@ -17,7 +17,7 @@ survives a reload or a reboot.
 ## Install
 
 ```
-omarchy plugin add https://github.com/MeperDonas/omarchy-looknfeel.git --enable
+omarchy plugin add https://github.com/meperdev/omarchy-looknfeel.git --enable
 ```
 
 The widget lands on the right of the bar (move it with `omarchy bar move`), and
